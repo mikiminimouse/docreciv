@@ -181,6 +181,47 @@ export ASYNC_LIMIT_PER_HOST=50
 
 ---
 
+## Дополнительные тесты (Январь 2026)
+
+### Тест 2026-01-27
+
+```
+Status: partial
+Processed: 1502 protocols
+Downloaded: 1663 files
+Failed: 4
+Throughput: 4.38 files/s
+Success Rate: 99.8%
+```
+
+**Результаты**: Лучший success rate среди всех тестов (99.8%), минимальное количество ошибок (4).
+
+### Тест 2026-01-22
+
+```
+Status: partial
+Processed: 1703 protocols
+Downloaded: 1841 files
+Failed: 11
+Throughput: 3.31 files/s
+Success Rate: 99.4%
+```
+
+**Результаты**: Максимум протоколов за 10 дней (1,703), увеличенный duration из-за большего объёма данных.
+
+---
+
+## Сводная таблица всех тестов
+
+| Дата | Протоколов | Файлов | Success Rate | Throughput | Duration | Ошибок |
+|------|-----------|--------|-------------|-----------|----------|--------|
+| 2026-01-22 | 1,703 | 1,841 | 99.4% | 3.31 f/s | 9.3 мин | 11 |
+| 2026-01-24 | 1,665 | 1,823 | 98.2% | 4.25 f/s | 7.1 мин | 34 |
+| 2026-01-27 | 1,502 | 1,663 | 99.8% | 4.38 f/s | 6.3 мин | 4 |
+| **Среднее** | **1,623** | **1,776** | **99.1%** | **3.98 f/s** | **7.6 мин** | **16** |
+
+---
+
 ## Рекомендации
 
 ### Немедленные эффекты
@@ -197,3 +238,9 @@ export ASYNC_LIMIT_PER_HOST=50
 - Proxy rotation для распределения запросов
 - Predictive prefetching
 - Circuit breaker pattern для external dependencies
+
+---
+
+## Дополнительная документация
+
+- **[ASYNC_TEST_RESULTS_SUMMARY.md](ASYNC_TEST_RESULTS_SUMMARY.md)** — Сводный отчёт по всем тестам

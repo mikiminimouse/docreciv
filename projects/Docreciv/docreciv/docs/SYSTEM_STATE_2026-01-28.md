@@ -164,20 +164,25 @@
 
 ---
 
-## Performance Metrics (Test Results 2026-01-28)
+## Performance Metrics (Test Results Январь 2026)
 
-### Async Downloader
+### Сводная таблица всех тестов
+
+| Дата | Протоколов | Файлов | Success Rate | Throughput | Duration | Ошибок |
+|------|-----------|--------|-------------|-----------|----------|--------|
+| 2026-01-22 | 1,703 | 1,841 | 99.4% | 3.31 f/s | 9.3 мин | 11 |
+| 2026-01-24 | 1,665 | 1,823 | 98.2% | 4.25 f/s | 7.1 мин | 34 |
+| 2026-01-27 | 1,502 | 1,663 | 99.8% | 4.38 f/s | 6.3 мин | 4 |
+| **Среднее** | **1,623** | **1,776** | **99.1%** | **3.98 f/s** | **7.6 мин** | **16** |
+
+### Async Downloader (базовые метрики)
 
 | Метрика | Значение |
 |---------|----------|
-| Throughput | **4.25 files/s** |
-| Success Rate | **98.2%** |
-| Duration | ~7 минут для 1665 protocols (1823 files) |
+| Throughput (avg) | **3.98 files/s** |
+| Success Rate (avg) | **99.1%** |
 | Concurrent Requests | 100 |
 | Concurrent Protocols | 50 |
-| Protocols synced | 1665 (по loadDate) |
-| Files downloaded | 1823 |
-| Errors | 34 (timeout/connection reset) |
 
 ### URL Distribution
 
