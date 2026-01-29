@@ -5,8 +5,10 @@
 **Docreciv** — компонент приёма данных для pipeline обработки протоколов закупок.
 Система синхронизирует протоколы из удалённой MongoDB и загружает документы с zakupki.gov.ru.
 
-**Версия**: 1.1.0 (январь 2026)
+**Версия**: 2.0.0 (январь 2026)
 **Статус**: Production Ready ✅
+
+**Новое**: Унифицированная система трейсинга с `remote_mongo_id` — см. [TRACE_SYSTEM.md](TRACE_SYSTEM.md)
 
 ---
 
@@ -148,13 +150,26 @@ result = asyncio.run(download())
 
 ```json
 {
-  "_id": ObjectId("..."),
+  "_id": ObjectId("697a8e32..."),
+  "remote_mongo_id": "65a1b2c3...",  // ★ PRIMARY TRACE ID (исходный _id из удалённой MongoDB)
   "unit_id": "UNIT_a1b2c3d4e5f6g7h8",
   "loadDate": ISODate("2026-01-24T10:30:00Z"),
   "urls": [{"url": "https://...", "fileName": "protocol.pdf"}],
-  "status": "downloaded"
+  "status": "downloaded",
+
+  "trace": {
+    "docreciv": {
+      "unit_id": "UNIT_a1b2c3d4e5f6a7b8",
+      "synced_at": "2026-01-28T21:00:00Z"
+    }
+  },
+  "history": [
+    {"component": "docreciv", "action": "synced", "timestamp": "..."}
+  ]
 }
 ```
+
+**Подробнее**: [TRACE_SYSTEM.md](TRACE_SYSTEM.md)
 
 ---
 
@@ -174,10 +189,13 @@ result = asyncio.run(download())
 ```json
 {
   "unit_id": "UNIT_01d705f30ce548b1",
+  "remote_mongo_id": "65a1b2c3...",  // ★ PRIMARY TRACE ID
+  "local_mongo_id": "697a8e32...",   // Локальный MongoDB _id
   "purchase_notice_number": "32615603710",
   "source_date": "2026-01-24",
   "files_total": 2,
-  "files_success": 2
+  "files_success": 2,
+  "trace_id": "65a1b2c3..."
 }
 ```
 
@@ -191,6 +209,25 @@ result = asyncio.run(download())
 | "File name too long" | `sanitize_filename()` с UTF-8 ограничением |
 | Дублирование пути | Исправлен `file_manager.py` |
 | Ошибки `/app` | Graceful error handling в `config.py` |
+| **Потеря связи с источником** | **Унифицированная система трейсинга с `remote_mongo_id`** |
+
+---
+
+## Система трейсинга (Новое в v2.0.0)
+
+**`remote_mongo_id`** — единый идентификатор для сквозного трейсинга от источника до всех компонентов.
+
+```
+Удалённая MongoDB (_id: 65a1b2c3...)
+    ↓ sync
+Локальная MongoDB (remote_mongo_id: 65a1b2c3...)
+    ├── trace.docreciv → unit.meta.json
+    ├── trace.docprep → manifest.json
+    ├── trace.docling → docling_results
+    └── trace.llm_qaenrich → qa_results
+```
+
+**Подробнее**: [TRACE_SYSTEM.md](TRACE_SYSTEM.md)
 
 ---
 
@@ -235,3 +272,4 @@ LLM_qaenrich (QA & Enrichment)
 | [TESTING.md](TESTING.md) | Руководство по тестированию |
 | [SYSTEM_STATE_2026-01-28.md](SYSTEM_STATE_2026-01-28.md) | Состояние системы |
 | [ASYNC_TEST_RESULTS_SUMMARY.md](ASYNC_TEST_RESULTS_SUMMARY.md) | Результаты тестов |
+| [TRACE_SYSTEM.md](TRACE_SYSTEM.md) | **Унифицированная система трейсинга (NEW!)** |

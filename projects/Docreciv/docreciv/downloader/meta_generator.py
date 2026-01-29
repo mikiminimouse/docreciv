@@ -28,7 +28,7 @@ class MetaGenerator:
     ) -> None:
         """
         Создать unit.meta.json файл для UNIT директории.
-        
+
         Args:
             unit_dir: Path к UNIT директории
             unit_id: Идентификатор UNIT
@@ -39,33 +39,48 @@ class MetaGenerator:
             files_total: Общее количество файлов
         """
         try:
-            record_id = str(protocol.get("_id", ""))
-            
+            # Local MongoDB _id (for reference)
+            local_mongo_id = str(protocol.get("_id", ""))
+
+            # ★ PRIMARY TRACE ID: Original remote MongoDB _id
+            remote_mongo_id = protocol.get("remote_mongo_id", "")
+
             # Извлекаем purchaseNoticeNumber
             purchase_info = protocol.get("purchaseInfo", {})
             purchase_notice_number = None
             if isinstance(purchase_info, dict):
                 purchase_notice_number = purchase_info.get("purchaseNoticeNumber")
-            
+
             meta_data = {
                 "unit_id": unit_id,
-                "record_id": record_id,
+
+                # ★ TRACEABILITY FIELDS
+                "remote_mongo_id": remote_mongo_id,  # Primary trace ID (from remote MongoDB)
+                "local_mongo_id": local_mongo_id,    # Local MongoDB _id (reference)
+                "record_id": local_mongo_id,         # Legacy field (kept for compatibility)
+
+                # Download metadata
                 "source_date": source_date,
                 "downloaded_at": datetime.utcnow().isoformat() + "Z",
                 "files_total": files_total,
                 "files_success": files_success,
                 "files_failed": files_failed,
+
+                # Business metadata
                 "purchase_notice_number": purchase_notice_number,
                 "source": protocol.get("source", "unknown"),
                 "url_count": protocol.get("url_count", 0),
-                "multi_url": protocol.get("multi_url", False)
+                "multi_url": protocol.get("multi_url", False),
+
+                # ★ TRACE INFO (for easy reference)
+                "trace_id": remote_mongo_id,  # Same as remote_mongo_id for convenience
             }
-            
+
             meta_file = unit_dir / "unit.meta.json"
             with open(meta_file, 'w', encoding='utf-8') as f:
                 json.dump(meta_data, f, ensure_ascii=False, indent=2)
-            
-            logger.debug(f"Created unit.meta.json for {unit_id}")
+
+            logger.debug(f"Created unit.meta.json for {unit_id} with remote_mongo_id={remote_mongo_id[:8]}...")
         except Exception as e:
             logger.error(f"Error creating unit.meta.json for {unit_id}: {e}")
             raise

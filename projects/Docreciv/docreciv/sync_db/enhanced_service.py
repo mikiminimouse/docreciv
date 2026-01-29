@@ -237,35 +237,54 @@ class EnhancedSyncService:
     def _ensure_indexes(self, db) -> bool:
         """
         Create necessary indexes in local database.
-        
+
         Args:
             db: Local MongoDB database instance
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
             collection = db[self.config.sync_db.local_mongo.collection]
-            
-            # Create required indexes
+
+            # ★ TRACEABILITY INDEXES: Support for unified trace system
             indexes = [
-                ([("purchaseNoticeNumber", 1), ("source", 1)], "pn_source_idx"),
-                ([("loadDate", 1)], "loadDate_idx"),
-                ([("unit_id", 1)], "unit_idx"),
+                # PRIMARY TRACE INDEX: remote_mongo_id (UNIQUE)
+                ([("remote_mongo_id", 1)], {"unique": True}, "remote_mongo_id_idx"),
+
+                # Component trace indexes
+                ([("trace.docreciv.unit_id", 1)], "trace_docreciv_unit_idx"),
+                ([("unit_id", 1)], "unit_idx"),  # Legacy support
+
+                # Business keys (NOT unique - one purchase can have multiple protocols)
+                ([("purchaseInfo.purchaseNoticeNumber", 1)], "purchase_notice_idx"),
+                ([("purchaseNoticeNumber", 1), ("source", 1)], "pn_source_idx"),  # Legacy
+
+                # Status and date indexes
                 ([("status", 1)], "status_idx"),
-                ([("created_at", 1)], "created_at_idx")
+                ([("loadDate", -1)], "loaddate_idx"),  # Descending for recent-first queries
+                ([("created_at", -1)], "created_at_idx"),
+
+                # History indexing for temporal queries
+                ([("history.timestamp", -1)], "history_timestamp_idx"),
             ]
-            
-            for index_spec, index_name in indexes:
+
+            for idx_def in indexes:
+                if len(idx_def) == 3:
+                    index_spec, index_options, index_name = idx_def
+                else:
+                    index_spec, index_name = idx_def
+                    index_options = {}
+
                 try:
-                    collection.create_index(index_spec, name=index_name)
+                    collection.create_index(index_spec, name=index_name, **index_options)
                     self.logger.debug(f"Created index: {index_name}")
                 except Exception as e:
                     self.logger.warning(f"Could not create index {index_name}: {e}")
-            
-            self.logger.info("Indexes ensured in local MongoDB")
+
+            self.logger.info("Indexes ensured in local MongoDB (including traceability indexes)")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error ensuring indexes: {e}")
             return False
@@ -349,30 +368,37 @@ class EnhancedSyncService:
     def _create_protocol_document(self, raw_doc: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create protocol document for insertion into local MongoDB.
-        
+
         Args:
             raw_doc: Raw protocol document from remote MongoDB
-            
+
         Returns:
             Document ready for insertion
         """
         # Extract purchase notice number
         purchase_info = raw_doc.get("purchaseInfo", {})
         pn = purchase_info.get("purchaseNoticeNumber") if isinstance(purchase_info, dict) else None
-        
+
         # Extract URLs from attachments
         urls, load_date = self._extract_urls_from_attachments(raw_doc)
-        
+
         # Get current timestamp
         now_ts = datetime.utcnow()
-        
+
+        # ★ CRITICAL: Preserve original _id from remote MongoDB for traceability
+        original_id = str(raw_doc.get("_id", ""))
+        unit_id = self._generate_unit_id()
+
         # Create document with service fields
         doc_to_insert = {
             # FULL PROTOCOL DATA FROM MONGODB (excluding _id)
             **{k: v for k, v in raw_doc.items() if k != '_id'},
 
+            # ★ TRACEABILITY FIELDS
+            "remote_mongo_id": original_id,  # Original _id from remote MongoDB (PRIMARY TRACE ID)
+
             # Service fields for preprocessing
-            "unit_id": self._generate_unit_id(),
+            "unit_id": unit_id,
             "urls": urls,
             "multi_url": len(urls) > 1,
             "url_count": len(urls),
@@ -380,8 +406,31 @@ class EnhancedSyncService:
             "status": "pending",
             "created_at": now_ts,
             "updated_at": now_ts,
+
+            # ★ TRACE STRUCTURE: Component-level tracking
+            "trace": {
+                "docreciv": {
+                    "unit_id": unit_id,
+                    "synced_at": now_ts.isoformat() + "Z",
+                    "remote_mongo_id": original_id,
+                },
+                # Future components will add their trace data here:
+                # "docprep": {...},
+                # "docling": {...},
+                # "llm_qaenrich": {...},
+            },
+
+            # ★ HISTORY: Chronological processing log
+            "history": [
+                {
+                    "component": "docreciv",
+                    "action": "synced",
+                    "timestamp": now_ts.isoformat() + "Z",
+                    "remote_mongo_id": original_id,
+                }
+            ],
         }
-        
+
         return doc_to_insert
 
     def _collect_statistics(self) -> Dict[str, Any]:
