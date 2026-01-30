@@ -249,8 +249,8 @@ class EnhancedSyncService:
 
             # ★ TRACEABILITY INDEXES: Support for unified trace system
             indexes = [
-                # PRIMARY TRACE INDEX: remote_mongo_id (UNIQUE)
-                ([("remote_mongo_id", 1)], {"unique": True}, "remote_mongo_id_idx"),
+                # PRIMARY TRACE INDEX: registrationNumber (UNIQUE)
+                ([("registrationNumber", 1)], {"unique": True}, "registration_number_idx"),
 
                 # Component trace indexes
                 ([("trace.docreciv.unit_id", 1)], "trace_docreciv_unit_idx"),
@@ -375,18 +375,20 @@ class EnhancedSyncService:
         Returns:
             Document ready for insertion
         """
-        # Extract purchase notice number
+        # Extract purchase notice number (metadata)
         purchase_info = raw_doc.get("purchaseInfo", {})
         pn = purchase_info.get("purchaseNoticeNumber") if isinstance(purchase_info, dict) else None
 
         # Extract URLs from attachments
         urls, load_date = self._extract_urls_from_attachments(raw_doc)
 
+        # ★ PRIMARY TRACE ID: registrationNumber from root document
+        reg_number = raw_doc.get("registrationNumber", "")
+
         # Get current timestamp
         now_ts = datetime.utcnow()
 
-        # ★ CRITICAL: Preserve original _id from remote MongoDB for traceability
-        original_id = str(raw_doc.get("_id", ""))
+        # Generate unit_id (local file system identifier)
         unit_id = self._generate_unit_id()
 
         # Create document with service fields
@@ -395,7 +397,7 @@ class EnhancedSyncService:
             **{k: v for k, v in raw_doc.items() if k != '_id'},
 
             # ★ TRACEABILITY FIELDS
-            "remote_mongo_id": original_id,  # Original _id from remote MongoDB (PRIMARY TRACE ID)
+            "registrationNumber": reg_number,  # PRIMARY TRACE ID from purchaseProtocol collection
 
             # Service fields for preprocessing
             "unit_id": unit_id,
@@ -412,7 +414,7 @@ class EnhancedSyncService:
                 "docreciv": {
                     "unit_id": unit_id,
                     "synced_at": now_ts.isoformat() + "Z",
-                    "remote_mongo_id": original_id,
+                    "registrationNumber": reg_number,
                 },
                 # Future components will add their trace data here:
                 # "docprep": {...},
@@ -426,7 +428,7 @@ class EnhancedSyncService:
                     "component": "docreciv",
                     "action": "synced",
                     "timestamp": now_ts.isoformat() + "Z",
-                    "remote_mongo_id": original_id,
+                    "registrationNumber": reg_number,
                 }
             ],
         }

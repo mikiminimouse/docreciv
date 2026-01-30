@@ -4,29 +4,31 @@
 
 Система трейсинга обеспечивает сквозную отслеживаемость документов от источника (удалённая MongoDB) до всех этапов обработки (Docreciv → Docprep → Doclingproc → LLM_qaenrich).
 
-**Версия**: 2.0.0 (январь 2026)
-**Статус**: Реализовано в Docreciv
+**Версия**: 2.1.0 (январь 2026)
+**Статус**: Production Ready ✅
+
+**Ключевое изменение**: Вместо `remote_mongo_id` используется `registrationNumber` как PRIMARY TRACE ID для устойчивости к миграциям баз данных.
 
 ---
 
-## Ключевая концепция: remote_mongo_id
+## Ключевая концепция: registrationNumber
 
-**`remote_mongo_id`** — единый идентификатор для всего pipeline. Это оригинальный `_id` документа из удалённой MongoDB (zakupki.gov.ru).
+**`registrationNumber`** — уникальный номер протокола закупки из коллекции `purchaseProtocol` удалённой MongoDB. Используется как единый идентификатор для всего pipeline.
+
+**Почему не `remote_mongo_id`**: ObjectId из MongoDB может быть потерян при миграции или перезаписи баз данных. `registrationNumber` — это бизнес-ключ, который сохраняется при любых операциях с БД.
 
 ```
-Удалённая MongoDB (protocols223)
+Удалённая MongoDB (purchaseProtocol)
 ┌─────────────────────────────┐
-│ _id: 65a1b2c3d4e5f6g7h8i9j0 │ ← Исходный ObjectId
-│ purchaseInfo: {...}          │
+│ registrationNumber: "0373...│ ← PRIMARY TRACE ID
+│ purchaseInfo.purchaseNotice...│
 │ loadDate: 2026-01-24        │
 └─────────────────────────────┘
-              │
-              │ sync (сохраняем _id как remote_mongo_id)
+              │ sync (сохраняем registrationNumber)
               ▼
 Локальная MongoDB (docling_metadata)
 ┌─────────────────────────────┐
-│ _id: 697a8e32f1a2b3c4d5e6f7 │ ← Локальный ObjectId (служебный)
-│ remote_mongo_id: 65a1b2c3... │ ← PRIMARY TRACE ID
+│ registrationNumber: "0373..."│ ← PRIMARY TRACE ID
 │ trace: {...}                 │
 │ history: [...]               │
 └─────────────────────────────┘
@@ -36,27 +38,23 @@
 
 ## Структура документа в MongoDB
 
-### Полная схема документа protocols:
-
 ```javascript
 {
-  // === Локальные служебные поля ===
-  "_id": ObjectId("697a8e32..."),        // Локальный MongoDB _id
-  "created_at": ISODate("2026-01-28"),
-  "updated_at": ISODate("2026-01-28"),
-  "status": "downloaded",
+  "_id": ObjectId("697a8e32..."),        // Локальный MongoDB (служебный)
 
   // === PRIMARY TRACE ID ===
-  "remote_mongo_id": "65a1b2c3d4e5f6g7h8i9j0",  // Исходный _id из удалённой MongoDB
+  "registrationNumber": "0373200040224000001",  // Из purchaseProtocol
+
+  // === Метаданные ===
+  "purchaseNoticeNumber": "32615605974",  // Номер закупки (НЕ уникален для протоколов)
 
   // === Бизнес-данные (из источника) ===
   "purchaseInfo": {
-    "purchaseNoticeNumber": "32615605974",  // Метаданные, НЕ уникальный ID!
+    "purchaseNoticeNumber": "32615605974",
     "purchaseName": "...",
     ...
   },
   "loadDate": ISODate("2026-01-24T10:30:00Z"),
-  "publicationDateTime": ISODate("2026-01-23T15:00:00Z"),
   "urls": [...],
   "multi_url": true,
   "url_count": 2,
@@ -67,15 +65,15 @@
   // === TRACE: Покомпонентное отслеживание ===
   "trace": {
     "docreciv": {
-      "unit_id": "UNIT_a1b2c3d4e5f6a7b8",
-      "synced_at": "2026-01-28T21:00:00Z",
-      "remote_mongo_id": "65a1b2c3d4e5f6g7h8i9j0",
+      "unit_id": "UNIT_a1b2c3...",
+      "synced_at": "2026-01-29T07:00:00Z",
+      "registrationNumber": "0373200040224000001",
       "files_downloaded": 2,
     },
     // Docprep добавит:
     // "docprep": {
     //   "processed_at": "...",
-    //   "manifest_path": "/...",
+    //   "manifest_path": "/.../Ready2Docling/.../manifest.json",
     // },
     // Doclingproc добавит:
     // "docling": {...},
@@ -88,13 +86,13 @@
     {
       "component": "docreciv",
       "action": "synced",
-      "timestamp": "2026-01-28T21:00:00Z",
-      "remote_mongo_id": "65a1b2c3d4e5f6g7h8i9j0",
+      "timestamp": "2026-01-29T07:00:00Z",
+      "registrationNumber": "0373200040224000001",
     },
     {
       "component": "docreciv",
       "action": "downloaded",
-      "timestamp": "2026-01-28T21:05:00Z",
+      "timestamp": "2026-01-29T07:05:00Z",
       "files_count": 2,
     },
     // Future events...
@@ -110,7 +108,7 @@
 # В коллекции protocols
 [
     # PRIMARY TRACE INDEX (UNIQUE)
-    IndexModel([("remote_mongo_id", 1)], unique=True),
+    IndexModel([("registrationNumber", 1)], unique=True),
 
     # Component trace indexes
     IndexModel([("trace.docreciv.unit_id", 1)]),
@@ -120,6 +118,7 @@
 
     # Business keys (для поиска, НЕ уникальные)
     IndexModel([("purchaseInfo.purchaseNoticeNumber", 1)]),
+    IndexModel([("purchaseNoticeNumber", 1)]),
 
     # Date indexes
     IndexModel([("loadDate", -1)]),
@@ -135,12 +134,12 @@
 {
   "unit_id": "UNIT_a1b2c3d4e5f6a7b8",
 
-  "remote_mongo_id": "65a1b2c3d4e5f6g7h8i9j0",   // PRIMARY TRACE ID
-  "local_mongo_id": "697a8e32f1a2b3c4d5e6f7",   // Локальный _id
-  "record_id": "697a8e32f1a2b3c4d5e6f7",        // Legacy (совместимость)
+  "registrationNumber": "0373200040224000001",  // PRIMARY TRACE ID
+  "local_mongo_id": "697a8e32f1a2b3c4d5e6f7",     // Локальный MongoDB _id (reference)
+  "record_id": "697a8e32f1a2b3c4d5e6f7",          // Legacy (совместимость)
 
   "source_date": "2026-01-24",
-  "downloaded_at": "2026-01-28T21:05:00Z",
+  "downloaded_at": "2026-01-29T07:05:00Z",
   "files_total": 2,
   "files_success": 2,
   "files_failed": 0,
@@ -150,7 +149,7 @@
   "url_count": 2,
   "multi_url": true,
 
-  "trace_id": "65a1b2c3d4e5f6g7h8i9j0"          // Для удобства
+  "trace_id": "0373200040224000001"            // Для удобства = registrationNumber
 }
 ```
 
@@ -158,7 +157,7 @@
 
 ## Использование
 
-### Поиск по remote_mongo_id
+### Поиск по registrationNumber
 
 ```python
 from pymongo import MongoClient
@@ -168,7 +167,7 @@ db = client['docling_metadata']
 protocols = db['protocols']
 
 # Найти по первичному trace ID
-protocol = protocols.find_one({"remote_mongo_id": "65a1b2c3d4e5f6g7h8i9j0"})
+protocol = protocols.find_one({"registrationNumber": "0373200040224000001"})
 
 # Получить полный трейс
 trace = protocol.get('trace', {})
@@ -179,15 +178,15 @@ for component, data in trace.items():
 ### Агрегация с другими коллекциями
 
 ```python
-# Объединить с qa_results по remote_mongo_id
+# Объединить с qa_results по registrationNumber
 pipeline = [
-    {"$match": {"remote_mongo_id": "65a1b2c3..."}},
+    {"$match": {"registrationNumber": "0373200040224000001"}},
     {
         "$lookup": {
             "from": "qa_results",
-            "let": {"remote_id": "$remote_mongo_id"},
+            "let": {"reg_number": "$registrationNumber"},
             "pipeline": [
-                {"$match": {"$expr": {"$eq": ["$remote_mongo_id", "$$remote_id"]}}}
+                {"$match": {"$expr": {"$eq": ["$registrationNumber", "$$reg_number"]}}}
             ],
             "as": "qa_data"
         }
@@ -198,17 +197,18 @@ pipeline = [
 ### Обновление trace из компонента
 
 ```python
-# Компонент (например, LLM_qaenrich) обновляет свой trace
-def update_trace(remote_mongo_id: str, component: str, data: dict):
+def update_trace(registrationNumber: str, component: str, data: dict):
+    """Обновить trace протокола."""
     protocols.update_one(
-        {"remote_mongo_id": remote_mongo_id},
+        {"registrationNumber": registrationNumber},
         {
             "$set": {f"trace.{component}": data},
             "$push": {
                 "history": {
                     "component": component,
                     "action": "processed",
-                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "registrationNumber": registrationNumber,
                 }
             }
         }
@@ -233,19 +233,19 @@ python3 docreciv/scripts/verify_trace_system.py
   ✅ Система трейсинга настроена КОРРЕКТНО
 
 Проверка 1: Индексы
-  ✅ remote_mongo_id_idx: PRIMARY TRACE INDEX (UNIQUE)
+  ✅ registration_number_idx: PRIMARY TRACE INDEX (UNIQUE)
   ✅ trace_docreciv_unit_idx: Component trace
   ✅ purchase_notice_idx: Business key
 
 Проверка 2: Структура документов
-  С remote_mongo_id: N (XX%)
+  С registrationNumber: N (XX%)
 
 Проверка 3: Пример документа
-  remote_mongo_id: 65a1b2c3d4...
+  registrationNumber: 03732000402...
   Trace: {docreciv: {...}}
 
 Проверка 4: Уникальность
-  ✅ Все remote_mongo_id уникальны
+  ✅ Все registrationNumber уникальны
 ```
 
 ---
@@ -254,51 +254,49 @@ python3 docreciv/scripts/verify_trace_system.py
 
 | Файл | Изменения |
 |------|-----------|
-| `docreciv/sync_db/enhanced_service.py` | Добавлено `remote_mongo_id`, `trace`, `history` в `_create_protocol_document()` |
-| `docreciv/sync_db/enhanced_service.py` | Обновлён `_ensure_indexes()` для новых индексов |
-| `docreciv/downloader/meta_generator.py` | Добавлены `remote_mongo_id`, `local_mongo_id`, `trace_id` в `unit.meta.json` |
-| `docreciv/scripts/verify_trace_system.py` | Новый скрипт верификации |
+| `docreciv/sync_db/enhanced_service.py` | `registrationNumber` вместо `remote_mongo_id` |
+| `docreciv/downloader/meta_generator.py` | `registrationNumber` в unit.meta.json |
+| `docreciv/scripts/verify_trace_system.py` | Проверки для `registrationNumber` |
 
 ---
 
-## Почему НЕ purchaseNoticeNumber?
+## Почему registrationNumber?
 
-| Проверка | Результат |
-|----------|-----------|
-| Уникален ли? | **НЕТ** — один закуп может иметь несколько протоколов |
-| Зависит от времени? | **НЕТ** — константа для закупки |
-| Отслеживает источник? | **НЕТ** — только метаданные закупки |
-
-**Вывод**: `purchaseNoticeNumber` — важная бизнес-метадата для группировки, но **НЕ идентификатор документа**.
+| Критерий | remote_mongo_id | registrationNumber |
+|----------|------------------|-------------------|
+| Уникален? | ✅ Да | ✅ Да |
+| Стабилен при миграции БД? | ❌ Может потеряться | ✅ Сохраняется |
+| Является бизнес-ключом? | ❌ Технический ObjectId | ✅ Номер протокола |
+| Используется в external API? | ❌ Нет | ✅ zakupki.gov.ru |
 
 ---
 
 ## Roadmap для других компонентов
 
 ### Phase 2: Docprep
-- Добавить `remote_mongo_id` в `manifest.json`
-- Обновлять `trace.docprep` при обработке
+- Добавить `registrationNumber` в manifest.json
+- Обновлять trace при переносе UNIT
 
-### Phase 3: Doclingproc
-- Использовать `remote_mongo_id` для поиска метаданных
-- Добавлять `trace.docling` в результаты
+### Phase 3: DoclingProc
+- Использовать `registrationNumber` для поиска метаданных
+- Добавлять trace в результаты
 
 ### Phase 4: LLM_qaenrich
-- Добавить `remote_mongo_id` в QA записи
-- Обновлять `trace.llm_qaenrich`
+- Добавить `registrationNumber` в QA записи
+- Обновлять trace в protocols
 
 ---
 
 ## Миграция существующих данных
 
-Для существующих документов без `remote_mongo_id`:
+Для существующих документов без `registrationNumber`:
 
 ```python
 # Вариант A: Оставить как есть (backward compatibility)
 # Старые документы продолжают работать с unit_id
 
 # Вариант B: Миграция при следующей синхронизации
-# Повторная синхронизация перезапишет документы с remote_mongo_id
+# Повторная синхронизация перезапишет документы с registrationNumber
 ```
 
-**Рекомендация**: Оставить старые документы как есть. Новые документы будут иметь полную структуру трейсинга. При необходимости можно выполнить ресинхронизацию для конкретных дат.
+**Рекомендация**: Оставить старые документы как есть. Новые документы будут иметь `registrationNumber`. При необходимости можно выполнить ресинхронизацию для конкретных дат.

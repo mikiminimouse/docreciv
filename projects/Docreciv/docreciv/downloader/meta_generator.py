@@ -42,10 +42,10 @@ class MetaGenerator:
             # Local MongoDB _id (for reference)
             local_mongo_id = str(protocol.get("_id", ""))
 
-            # ★ PRIMARY TRACE ID: Original remote MongoDB _id
-            remote_mongo_id = protocol.get("remote_mongo_id", "")
+            # ★ PRIMARY TRACE ID: registrationNumber from purchaseProtocol collection
+            reg_number = protocol.get("registrationNumber", "")
 
-            # Извлекаем purchaseNoticeNumber
+            # Извлекаем purchaseNoticeNumber (metadata)
             purchase_info = protocol.get("purchaseInfo", {})
             purchase_notice_number = None
             if isinstance(purchase_info, dict):
@@ -55,9 +55,9 @@ class MetaGenerator:
                 "unit_id": unit_id,
 
                 # ★ TRACEABILITY FIELDS
-                "remote_mongo_id": remote_mongo_id,  # Primary trace ID (from remote MongoDB)
-                "local_mongo_id": local_mongo_id,    # Local MongoDB _id (reference)
-                "record_id": local_mongo_id,         # Legacy field (kept for compatibility)
+                "registrationNumber": reg_number,  # Primary trace ID (from purchaseProtocol)
+                "local_mongo_id": local_mongo_id,   # Local MongoDB _id (reference)
+                "record_id": local_mongo_id,        # Legacy field (kept for compatibility)
 
                 # Download metadata
                 "source_date": source_date,
@@ -73,14 +73,14 @@ class MetaGenerator:
                 "multi_url": protocol.get("multi_url", False),
 
                 # ★ TRACE INFO (for easy reference)
-                "trace_id": remote_mongo_id,  # Same as remote_mongo_id for convenience
+                "trace_id": reg_number,  # Same as registrationNumber for convenience
             }
 
             meta_file = unit_dir / "unit.meta.json"
             with open(meta_file, 'w', encoding='utf-8') as f:
                 json.dump(meta_data, f, ensure_ascii=False, indent=2)
 
-            logger.debug(f"Created unit.meta.json for {unit_id} with remote_mongo_id={remote_mongo_id[:8]}...")
+            logger.debug(f"Created unit.meta.json for {unit_id} with registrationNumber={reg_number[:8] if reg_number else 'N/A'}...")
         except Exception as e:
             logger.error(f"Error creating unit.meta.json for {unit_id}: {e}")
             raise

@@ -3,7 +3,7 @@
 Верификационный скрипт для унифицированной системы трейсинга.
 
 Проверяет:
-1. remote_mongo_id присутствует в документах protocols
+1. registrationNumber присутствует в документах protocols
 2. Структура trace корректно инициализирована
 3. Индексы созданы правильно
 """
@@ -45,7 +45,7 @@ def verify_trace_system() -> Dict[str, Any]:
 
     existing_indexes = collection.index_information()
     required_indexes = {
-        "remote_mongo_id_idx": "PRIMARY TRACE INDEX",
+        "registration_number_idx": "PRIMARY TRACE INDEX",
         "trace_docreciv_unit_idx": "Component trace",
         "purchase_notice_idx": "Business key",
     }
@@ -71,21 +71,21 @@ def verify_trace_system() -> Dict[str, Any]:
     print("=" * 60)
 
     total_docs = collection.count_documents({})
-    with_remote_id = collection.count_documents({"remote_mongo_id": {"$exists": True, "$ne": ""}})
+    with_reg_number = collection.count_documents({"registrationNumber": {"$exists": True, "$ne": ""}})
     with_trace = collection.count_documents({"trace.docreciv": {"$exists": True}})
     with_history = collection.count_documents({"history": {"$exists": True}})
 
     print(f"  Всего документов: {total_docs}")
-    print(f"  С remote_mongo_id: {with_remote_id} ({with_remote_id/total_docs*100:.1f}%)" if total_docs > 0 else "  С remote_mongo_id: 0")
+    print(f"  С registrationNumber: {with_reg_number} ({with_reg_number/total_docs*100:.1f}%)" if total_docs > 0 else "  С registrationNumber: 0")
     print(f"  С trace.docreciv: {with_trace} ({with_trace/total_docs*100:.1f}%)" if total_docs > 0 else "  С trace.docreciv: 0")
     print(f"  С history: {with_history} ({with_history/total_docs*100:.1f}%)" if total_docs > 0 else "  С history: 0")
 
     results["checks"]["document_structure"] = {
         "total": total_docs,
-        "with_remote_mongo_id": with_remote_id,
+        "with_registrationNumber": with_reg_number,
         "with_trace": with_trace,
         "with_history": with_history,
-        "coverage_pct": round(with_remote_id / total_docs * 100, 1) if total_docs > 0 else 0
+        "coverage_pct": round(with_reg_number / total_docs * 100, 1) if total_docs > 0 else 0
     }
 
     # Проверка 3: Пример документа
@@ -93,10 +93,10 @@ def verify_trace_system() -> Dict[str, Any]:
     print("🔍 ПРОВЕРКА 3: Пример документа")
     print("=" * 60)
 
-    sample = collection.find_one({"remote_mongo_id": {"$exists": True, "$ne": ""}})
+    sample = collection.find_one({"registrationNumber": {"$exists": True, "$ne": ""}})
     if sample:
         print(f"  _id: {str(sample.get('_id', ''))[:16]}...")
-        print(f"  remote_mongo_id: {sample.get('remote_mongo_id', '')[:16]}...")
+        print(f"  registrationNumber: {sample.get('registrationNumber', '')[:16]}...")
         print(f"  unit_id: {sample.get('unit_id', 'N/A')}")
         print(f"  status: {sample.get('status', 'N/A')}")
 
@@ -117,35 +117,35 @@ def verify_trace_system() -> Dict[str, Any]:
                 print(f"    ... и еще {len(history) - 3}")
 
         results["checks"]["sample_document"] = {
-            "has_remote_mongo_id": bool(sample.get('remote_mongo_id')),
+            "has_registrationNumber": bool(sample.get('registrationNumber')),
             "has_trace": bool(trace),
             "has_history": bool(history),
             "trace_components": list(trace.keys()) if trace else [],
             "history_events": len(history)
         }
     else:
-        print("  ⚠️  Документ с remote_mongo_id не найден")
+        print("  ⚠️  Документ с registrationNumber не найден")
         results["checks"]["sample_document"] = {"status": "not_found"}
 
-    # Проверка 4: Уникальность remote_mongo_id
+    # Проверка 4: Уникальность registrationNumber
     print("\n" + "=" * 60)
-    print("🔍 ПРОВЕРКА 4: Уникальность remote_mongo_id")
+    print("🔍 ПРОВЕРКА 4: Уникальность registrationNumber")
     print("=" * 60)
 
     pipeline = [
-        {"$match": {"remote_mongo_id": {"$exists": True, "$ne": ""}}},
-        {"$group": {"_id": "$remote_mongo_id", "count": {"$sum": 1}}},
+        {"$match": {"registrationNumber": {"$exists": True, "$ne": ""}}},
+        {"$group": {"_id": "$registrationNumber", "count": {"$sum": 1}}},
         {"$match": {"count": {"$gt": 1}}}
     ]
     duplicates = list(collection.aggregate(pipeline))
 
     if duplicates:
-        print(f"  ❌ Найдено {len(duplicates)} дубликатов remote_mongo_id:")
+        print(f"  ❌ Найдено {len(duplicates)} дубликатов registrationNumber:")
         for dup in duplicates[:5]:
             print(f"    - {dup['_id'][:16]}... ({dup['count']} документов)")
         results["checks"]["uniqueness"] = {"status": "duplicates", "count": len(duplicates)}
     else:
-        print(f"  ✅ Все remote_mongo_id уникальны")
+        print(f"  ✅ Все registrationNumber уникальны")
         results["checks"]["uniqueness"] = {"status": "ok"}
 
     # Итоговый статус
@@ -155,7 +155,7 @@ def verify_trace_system() -> Dict[str, Any]:
 
     all_ok = (
         indexes_ok and
-        with_remote_id > 0 and
+        with_reg_number > 0 and
         sample is not None and
         len(duplicates) == 0
     )
