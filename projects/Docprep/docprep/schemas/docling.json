@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Docling-ready Unit Schema",
+  "description": "Schema for validating UNIT structure before Docling processing",
+  "type": "object",
+  "required": ["unit_id", "metadata", "files"],
+  "properties": {
+    "unit_id": {
+      "type": "string",
+      "pattern": "^UNIT_[A-Za-z0-9_]+$"
+    },
+    "protocol_id": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["unit_id"],
+      "properties": {
+        "unit_id": {"type": "string"},
+        "protocol_id": {"type": "string"},
+        "protocol_date": {"type": "string", "format": "date"},
+        "unit_semantics": {"type": "object"},
+        "processing": {"type": "object"},
+        "state_machine": {"type": "object"}
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "name", "role"],
+        "properties": {
+          "type": {"type": "string", "enum": ["FileNode"]},
+          "path": {"type": "string"},
+          "name": {"type": "string"},
+          "role": {"type": "string", "enum": ["document", "attachment", "page"]},
+          "mime_type": {"type": "string"},
+          "transformations": {"type": "array"}
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {"type": "string", "enum": ["PageNode"]},
+          "file_path": {"type": "string"},
+          "page_number": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  }
+}
+
